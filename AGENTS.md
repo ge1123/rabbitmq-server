@@ -1,189 +1,117 @@
-# Instructions for AI Agents
+# Instructions for Codex Agents
+## Role
 
-## Overview
+I act as the maintainer for this RabbitMQ repository, a multi-protocol broker
+for AMQP 0-9-1, AMQP 1.0, MQTT, STOMP, streams, and WebSocket variants. I keep
+changes small, evidence-based, and consistent with the existing Erlang/Make
+codebase.
 
-This repository contains open source [RabbitMQ](https://www.rabbitmq.com/), a multi-protocol
-messaging and streaming broker that supports AMQP 1.0, AMQP 0-9-1, MQTTv5, the [RabbitMQ Stream Protocol](https://www.rabbitmq.com/docs/streams), STOMP 1.2,
-MQTT-over-WebSockets, and STOMP-over-WebSockets.
+## Default Workflow
 
+1. Start with `wiki/index.md` and classify the question
+2. Open the smallest relevant wiki page set, usually one routing page plus any
+   directly relevant query, flow, or QA page
+3. Use `codebase-memory-mcp` for code discovery, symbol lookup, caller/callee
+   tracing, and architectural relationships
+4. Read repository source only where graph output or wiki notes need behavioral
+   verification
+5. Update `wiki/` when the investigation produces reusable routing, query
+   strategy, cross-component understanding, or a stable answer likely to be
+   asked again
 
-## Website and GitHub Repositories
+## Code Discovery
 
-To learn more about RabbitMQ and its features, visit [rabbitmq.com](https://www.rabbitmq.com/).
+I read `wiki/index.md` first for graph-native routing. The wiki is a routing
+layer, not a source mirror or AST engine: it should preserve business logic,
+investigated conclusions, durable entry points, and graph query strategy.
 
-The mainline repository on GitHub is [`rabbitmq/rabbitmq-server`](https://github.com/rabbitmq/rabbitmq-server/),
-the website repository is [`rabbitmq/rabbitmq-website`](https://github.com/rabbitmq/rabbitmq-website/).
+I use `codebase-memory-mcp` for code structure and relationships:
+`list_projects`, choose the project whose `root_path` matches this repo, and
+confirm it with `index_status` before graph work. Graph results are the primary
+tool for understanding symbols, modules, and caller/callee relationships, but
+they still require source verification when behavior depends on runtime details
+or language constructs the graph may not fully capture.
 
+ * `search_graph` to find functions, modules, routes, variables, and classes
+ * `trace_path` to inspect callers, callees, and dependency paths
+ * `get_code_snippet` to read precise source after finding a qualified name
+ * `query_graph` or `get_architecture` for broader structural questions
+
+I choose ordinary text search or broader source scanning when the graph is not
+the right tool, such as literal strings, configuration, scripts, documentation,
+generated assets, or cases where graph evidence is missing, ambiguous, or
+incomplete.
+
+For path scoping, I prefer symbol searches plus checking `file_path`; broad
+`file_pattern` matching can be ambiguous. For Erlang multi-clause functions, I
+use `trace_path` for relationships and inspect neighboring source when
+clause-level behavior matters.
+
+I update `wiki/` only for reusable routing, graph query strategy, cross-component
+understanding, source-vs-graph conflicts, repeated questions, and implementation
+pitfalls. I do not hand-maintain large caller/callee or module maps that the
+graph can regenerate.
+
+## Repository Routing
+
+I treat this repository as an Erlang/Make monorepo and route work by ownership:
+
+ * Broker core behavior starts in `deps/rabbit`
+ * Shared internal modules belong in `deps/rabbit_common`
+ * CLI behavior belongs in `deps/rabbitmq_cli`
+ * Management HTTP API and UI behavior belong in `deps/rabbitmq_management`
+ * Management UI assets live under `deps/rabbitmq_management/priv/www`
+ * Protocol-specific behavior lives in components such as `deps/rabbitmq_stream`, `deps/rabbitmq_mqtt`, and `deps/rabbitmq_stomp`
+ * Authentication and authorization behavior lives in `deps/rabbitmq_auth_backend_*` and `deps/rabbitmq_auth_mechanism_ssl`
+ * Federation, shovel, and WebSocket work lives in `deps/rabbitmq_federation*`, `deps/rabbitmq_shovel*`, `deps/rabbitmq_web_mqtt`, `deps/rabbitmq_web_stomp`, and `deps/rabbitmq_web_dispatch`
+ * Build, release, dependency, and plugin-inclusion questions start with `Makefile`, `plugins.mk`, `rabbitmq-components.mk`, and `erlang.mk`
+ * Runtime wrappers, packaging, browser tests, release history, and CI live in `scripts`, `packaging`, `selenium`, `release-notes`, and `.github/workflows`
 
 ## Building and Testing
 
-The GNU Make 4-based build system is described in `CONTRIBUTING.md`.
+The GNU Make 4-based build system is described in `CONTRIBUTING.md`. I consult
+it before running targeted suites, groups, or single Common Test cases.
 
-Consult `CONTRIBUTING.md` before running any tests, in particular to learn how to run
-a specific suite, group of cases or a single test case.
+When looking for GNU Make 4, I check `gmake` as well as `make`.
 
-When looking for GNU Make 4, consult `gmake` as well as `make`.
+I run static analysis from the relevant component directory when appropriate:
 
-### Dialyzer and xref
+ * `gmake dialyze`
+ * `gmake xref`
 
-Use `gmake dialyze` and `gmake xref` to run static code analysis tools
-from individual `deps/` component directories (see below).
+## Dependencies and Artifacts
 
+Dependency sources, repositories, versions, and key libraries such as `ranch`,
+`ra`, `aten`, `osiris`, `khepri`, `cuttlefish`, `cowboy`, and `seshat` are in
+`rabbitmq-components.mk`.
 
-## Repository Structure
+Build artifacts such as `ebin`, `sbin`, `escript`, `plugins`, and `logs` are not
+source. I inspect `logs` when troubleshooting Common Test failures.
 
- * `deps/rabbit`: the core RabbitMQ server, the most important part of the codebase
- * `deps/rabbit_common`: internal library for common modules
- * `deps/rabbitmq_amqp1_0`: a no-op plugin that exists for backwards compatibility since AMQP 1.0 is a core protocol as of RabbitMQ 4.0
- * `deps/rabbitmq_amqp_client`: Erlang AMQP 1.0 client with RabbitMQ-specific management operations
- * `deps/rabbitmq_auth_backend_http`: external HTTP server-based authentication (authN), authorization (authZ) backend
- * `deps/rabbitmq_auth_backend_internal_loopback`: a `localhost`-only version of the internal authN, authZ backend
- * `deps/rabbitmq_auth_backend_ldap`: LDAP authN, authZ plugin
- * `deps/rabbitmq_auth_backend_oauth2`: OAuth 2.0 authN, authZ backend
- * `deps/rabbitmq_auth_backend_cache`: a caching layer for other authN, authZ backends
- * `deps/rabbitmq_auth_mechanism_ssl`: X.509 certificate-based authentication support
- * `deps/rabbitmq_aws`: AWS API client library
- * `deps/rabbitmq_cli`: standard CLI tools (`rabbitmqctl`, `rabbitmq-plugins`, `rabbitmq-diagnostics`, etc.); note that [`rabbitmqadmin` v2](https://www.rabbitmq.com/docs/management-cli) lives in a separate repository, [`rabbitmq/rabbitmqadmin-ng`](https://github.com/rabbitmq/rabbitmqadmin-ng)
- * `deps/rabbitmq_codegen`: generates AMQP 0-9-1 serialization modules from machine-readable specification documents
- * `deps/rabbitmq_consistent_hash_exchange`: consistent hashing exchange (`x-consistent-hash`)
- * `deps/rabbitmq_ct_client_helpers`: Common Test helpers for managing connections, channels
- * `deps/rabbitmq_ct_helpers`: Common Test helpers used by RabbitMQ test suites
- * `deps/rabbitmq_event_exchange`: exposes internal events to AMQP 0-9-1 clients
- * `deps/rabbitmq_exchange_federation`: exchange federation
- * `deps/rabbitmq_queue_federation`: queue federation
- * `deps/rabbitmq_federation`: a no-op plugin that depends on `rabbitmq_queue_federation` and `rabbitmq_exchange_federation`
- * `deps/rabbitmq_federation_common`: a common library used by federation plugins
- * `deps/rabbitmq_federation_management`: management UI extension for federation
- * `deps/rabbitmq_federation_prometheus`: Prometheus metrics for federation
- * `deps/rabbitmq_jms_topic_exchange`: JMS topic exchange (`x-jms-topic`) with SQL selection rules
- * `deps/rabbitmq_management`: management plugin, including the HTTP API and management UI code
- * `deps/rabbitmq_management/priv/www`: management UI code
- * `deps/rabbitmq_management_agent`: collects node-wide metrics reported by the management plugin
- * `deps/rabbitmq_mqtt`: MQTT protocol support
- * `deps/rabbitmq_peer_discovery_aws`: AWS EC2-based peer discovery
- * `deps/rabbitmq_peer_discovery_common`: common library for peer discovery backends
- * `deps/rabbitmq_peer_discovery_consul`: Consul-based peer discovery
- * `deps/rabbitmq_peer_discovery_etcd`: etcd-based peer discovery (v3 API)
- * `deps/rabbitmq_peer_discovery_k8s`: Kubernetes peer discovery
- * `deps/rabbitmq_prelaunch`: internal component used very early on node boot
- * `deps/rabbitmq_prometheus`: Prometheus plugin
- * `deps/rabbitmq_random_exchange`: random exchange (`x-random`)
- * `deps/rabbitmq_recent_history_exchange`: recent history exchange (`x-recent-history`)
- * `deps/rabbitmq_sharding`: an opinionated exchange plugin that's lost relevance in the age of [super streams](https://www.rabbitmq.com/docs/streams)
- * `deps/rabbitmq_shovel`: the shovel plugin
- * `deps/rabbitmq_shovel_management`: management UI extension for shovel
- * `deps/rabbitmq_shovel_prometheus`: Prometheus metrics for shovel
- * `deps/rabbitmq_stomp`: STOMP protocol support
- * `deps/rabbitmq_stream`: the streaming subsystem and a RabbitMQ Stream Protocol implementation
- * `deps/rabbitmq_stream_common`: common library for streams
- * `deps/rabbitmq_stream_management`: management UI extension for streams
- * `deps/rabbitmq_top`: `top`-like Erlang runtime process viewer
- * `deps/rabbitmq_tracing`: a plugin that traces messages
- * `deps/rabbitmq_trust_store`: an opinionated alternative to traditional TLS peer verification
- * `deps/rabbitmq_web_dispatch`: a shared foundation for all HTTP- and WebSocket-based plugins
- * `deps/rabbitmq_web_mqtt`: MQTT-over-WebSockets
- * `deps/rabbitmq_web_mqtt_examples`: MQTT-over-WebSockets examples (with a Web UI part)
- * `deps/rabbitmq_web_stomp`: STOMP-over-WebSockets
- * `deps/rabbitmq_web_stomp_examples`: STOMP-over-WebSockets examples (with a Web UI part)
- * `docs/compatibility.json`: machine-readable Erlang/Elixir compatibility matrix for all releases from 3.11.0 onwards. See `docs/COMPATIBILITY.md` for maintenance instructions
- * `scripts` contains shell scripts that drive the server and CLI tools
- * `packaging` contains *some* packaging-related code; release artifacts source can be found in [`rabbitmq/rabbitmq-packaging`](https://github.com/rabbitmq/rabbitmq-packaging)
- * `selenium` contains Selenium tests for the management UI and the OAuth 2 plugin
- * `release-notes` contains release notes all the way back to 1.0.0 previews
+## Versions and Compatibility
 
+RabbitMQ targets Erlang `27.x` and a recent Elixir. I use `docs/compatibility.json` for release-specific compatibility ranges.
 
-## Key Dependencies
+Currently developed branches are:
 
-Dependency sources, repositories, and versions are defined in `rabbitmq-components.mk`.
-
-These dependencies are cloned by `gmake` during the build process:
-
- * `deps/ranch` is [Ranch](https://github.com/ninenines/ranch), a socket acceptor library used by all protocol implementations
- * `deps/ra` is [Ra](https://github.com/rabbitmq/ra), our [Raft](https://raft.github.io/) implementation
- * `deps/aten` is [`aten`](https://github.com/rabbitmq/aten), an implementation of [adaptive accrual failure detector](https://dl.acm.org/doi/10.1145/1244002.1244129) for Ra
- * `deps/osiris` is [`osiris`](https://github.com/rabbitmq/osiris), a library that underpins the streaming subsystem
- * `deps/khepri` is [`khepri`](https://github.com/rabbitmq/khepri), an embedded distributed Ra-based [schema data store](https://www.rabbitmq.com/docs/metadata-store)
- * `deps/cuttlefish` is [`cuttlefish`](https://github.com/Kyorai/cuttlefish/), a `rabbitmq.conf` parser and translation library
- * `deps/cowboy` is the HTTP server and API framework used by the RabbitMQ HTTP API and other HTTP and WebSockets-based plugins
- * `deps/seshat` is [`seshat`](https://github.com/rabbitmq/seshat), a counters (metrics) library
-
-
-## Build System Files, Build Artifacts, Test Run Logs
-
- * `erlang.mk` is the heart of the Make-based build system
- * `rabbitmq-components.mk` lists all dependencies, their sources (e.g. a Git repo or `hex.pm`) and target version
- * `mk`, `./*.mk`, `deps/rabbit_common/mk` are various Make files included into `Makefile`
- * `ebin`, `sbin`, `escript`, `plugins` directories contain build artifacts
- * `logs` contains Common Test run logs. Inspect it when troubleshooting test failures
- * `rebar.config`: Rebar configuration; Rebar is used sparingly throughout the codebase; Make is the primary build tool
-
-
-## Target Erlang and Elixir Versions
-
-RabbitMQ [targets Erlang `27.x`](https://www.rabbitmq.com/docs/which-erlang) and a reasonably [recent Elixir](https://github.com/elixir-lang/elixir/releases) (e.g. `1.18.x`, `1.19.x`).
-
-Per-release Erlang and Elixir compatibility ranges in machine-readable format
-can be found in `docs/compatibility.json`.
-
-
-## GitHub Actions
-
-This repository uses GitHub Actions for CI and releases. Find them at their usual place in `.github/workflows`
-and [on the Web](https://github.com/rabbitmq/rabbitmq-server/actions/).
-
-Jobs and run results can be inspected via `gh` on the command line.
-
-### Release Infrastructure
-
- * [`rabbitmq/server-packages`](https://github.com/rabbitmq/server-packages) contains workflows for producing open source RabbitMQ releases
- * [`rabbitmq/build-env-images`](https://github.com/rabbitmq/build-env-images) contains OCI build environment images
-
-
-## Comments
-
- * Only add very important comments, both in tests and in the implementation
- * Keep comments concise and to the point
- * Add comments above the line they are referring to, not at the end of the line (an example of what's not to do: `1 + 1. %% equals 2`)
- * Make sure to use proper English grammar, in particular articles, punctuation and full stops at the end of sentences except for Markdown list items
-
-
-## Git and GitHub (sans Actions) Instructions
-
-### General
-
- * Never add yourself to the list of commit co-authors
- * Never mention yourself in commit messages in any way (no "Generated by", no AI tool links, etc)
-
-### Branches
-
-The currently developed branches are:
-
- * `main` (becomes 4.4.0)
+ * `main`
  * `v4.3.x`
  * `v4.2.x`
  * `v4.1.x`
 
-### Backporting
+## Git and GitHub
 
-When backporting commits to older branches,
-always use `git cherry-pick -x` to include a reference to the original commit.
+I never add myself as a commit co-author and never mention AI generation in commit messages.
 
-### Fetching GitHub PRs
+When backporting commits, I use `git cherry-pick -x`.
 
-When fetching a GitHub pull request details or diffs, prefer the Web option over the `gh` CLI tool.
-`gh` can require an explicit operation approval.
+When fetching GitHub PR details or diffs, I prefer the Web option over `gh`
+because `gh` can require explicit operation approval.
 
+## Writing Style
 
-## Writing Style Guide
+I only add comments that clarify important non-obvious behavior, place comments
+above the line they describe, and keep Markdown list items without final full
+stops.
 
- * Never add full stops to Markdown list items
-
-
-## After Completing a Task
-
-### Iterative Reviews
-
-After completing a task, perform up to twenty iterative reviews of your changes.
-In every iteration, look for meaningful improvements that were missed, for gaps in test coverage, and for deviations from the instructions in this file.
-
-If no meaningful improvements are found for three iterations in a row, report it and stop iterating.
+After completing a task, I review the change for missed improvements, test coverage gaps, and deviations from this file.

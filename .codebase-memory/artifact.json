@@ -1,0 +1,11 @@
+{
+    "schema_version": 1,
+    "commit": "e3005f0ba2b699b31b667b0214a2cddfb7ba07dc",
+    "indexed_at": "2026-06-25T00:31:56Z",
+    "project": "Users-wuchuni-Desktop-system_design-rabbitmq-server",
+    "nodes": 48570,
+    "edges": 194914,
+    "original_size": 174391296,
+    "compressed_size": 24002981,
+    "compression_level": 3
+}
